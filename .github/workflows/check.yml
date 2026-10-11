@@ -2,7 +2,7 @@ name: solar-check
 
 on:
   schedule:
-    - cron: "*/5 5-15 * * *"   # UTC; покрива дневните часове в България
+    - cron: "*/5 * * * *"   # на всеки 5 минути, денонощно
   workflow_dispatch:
     inputs:
       discover:
