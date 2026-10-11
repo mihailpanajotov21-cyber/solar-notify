@@ -18,6 +18,11 @@ MIN_BATTERY_PCT = float(os.environ.get("MIN_BATTERY_PCT", "60"))
 MIN_SOLAR_W = float(os.environ.get("MIN_SOLAR_W", "1000"))   # да не вдига тревога нощем
 CONFIRM_CHECKS = int(os.environ.get("CONFIRM_CHECKS", "2"))  # поредни проверки
 COOLDOWN_MIN = int(os.environ.get("COOLDOWN_MIN", "180"))    # пауза между известията
+
+# Известие "спри зареждането": батерията пада твърде ниско, докато консумацията е висока
+STOP_BATTERY_PCT = float(os.environ.get("STOP_BATTERY_PCT", "35"))   # батерия под това
+STOP_CONSUMPTION_W = float(os.environ.get("STOP_CONSUMPTION_W", "700"))  # И консумация над това
+STOP_COOLDOWN_MIN = int(os.environ.get("STOP_COOLDOWN_MIN", "30"))   # пауза между "спри" известията
 # -----------------------------------------------------------------------
 
 BASE = os.environ.get("SOLARMAN_BASE_URL", "https://globalapi.solarmanpv.com")
@@ -97,7 +102,7 @@ def load_state():
         with open(STATE_FILE) as f:
             return json.load(f)
     except Exception:
-        return {"streak": 0, "last_sent": 0}
+        return {"streak": 0, "last_sent": 0, "stop_streak": 0, "last_stop": 0}
 
 
 def save_state(state):
@@ -121,11 +126,13 @@ def main():
         sys.exit("Липсват стойности")
 
     state = load_state()
+    notified = False
+
+    # --- 1) Може да се зарежда ---
     ok = load < MAX_CONSUMPTION_W and soc > MIN_BATTERY_PCT and solar >= MIN_SOLAR_W
     state["streak"] = state.get("streak", 0) + 1 if ok else 0
 
     cooled = (time.time() - state.get("last_sent", 0)) > COOLDOWN_MIN * 60
-    notified = False
     if state["streak"] >= CONFIRM_CHECKS and cooled:
         ntfy(
             f"Батерия {soc:.0f}%, потребление {load:.0f} W, панели {solar:.0f} W.\n"
@@ -136,10 +143,26 @@ def main():
         state["streak"] = 0
         notified = True
 
+    # --- 2) Спри зареждането ---
+    low = soc < STOP_BATTERY_PCT and load > STOP_CONSUMPTION_W
+    state["stop_streak"] = state.get("stop_streak", 0) + 1 if low else 0
+
+    stop_cooled = (time.time() - state.get("last_stop", 0)) > STOP_COOLDOWN_MIN * 60
+    if state["stop_streak"] >= CONFIRM_CHECKS and stop_cooled:
+        ntfy(
+            f"Батерия {soc:.0f}%, потребление {load:.0f} W.\n"
+            "Спри зареждането на колата от ELNexus.",
+            "Спри зареждането!", priority="urgent", tags="warning,battery",
+        )
+        state["last_stop"] = time.time()
+        state["stop_streak"] = 0
+        notified = True
+
     save_state(state)
     print("Проверка готова. Известие:", "да" if notified else "не")
 
 
 if __name__ == "__main__":
     main()
+    
   
