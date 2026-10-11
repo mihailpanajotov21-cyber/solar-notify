@@ -23,6 +23,11 @@ COOLDOWN_MIN = int(os.environ.get("COOLDOWN_MIN", "180"))    # пауза меж
 STOP_BATTERY_PCT = float(os.environ.get("STOP_BATTERY_PCT", "35"))   # батерия под това
 STOP_CONSUMPTION_W = float(os.environ.get("STOP_CONSUMPTION_W", "700"))  # И консумация над това
 STOP_COOLDOWN_MIN = int(os.environ.get("STOP_COOLDOWN_MIN", "30"))   # пауза между "спри" известията
+
+# Известие "излишък": батерията е почти пълна и панелите дават повече, отколкото къщата ползва
+SURPLUS_BATTERY_PCT = float(os.environ.get("SURPLUS_BATTERY_PCT", "90"))  # батерия над това
+SURPLUS_MARGIN_W = float(os.environ.get("SURPLUS_MARGIN_W", "0"))         # панели > потребление + това
+SURPLUS_COOLDOWN_MIN = int(os.environ.get("SURPLUS_COOLDOWN_MIN", "180")) # пауза между известията
 # -----------------------------------------------------------------------
 
 BASE = os.environ.get("SOLARMAN_BASE_URL", "https://globalapi.solarmanpv.com")
@@ -102,7 +107,8 @@ def load_state():
         with open(STATE_FILE) as f:
             return json.load(f)
     except Exception:
-        return {"streak": 0, "last_sent": 0, "stop_streak": 0, "last_stop": 0}
+        return {"streak": 0, "last_sent": 0, "stop_streak": 0, "last_stop": 0,
+                "surplus_streak": 0, "last_surplus": 0}
 
 
 def save_state(state):
@@ -143,7 +149,27 @@ def main():
         state["streak"] = 0
         notified = True
 
-    # --- 2) Спри зареждането ---
+    if notified:  # да не се дублира с известието за излишък
+        state["last_surplus"] = time.time()
+        state["surplus_streak"] = 0
+
+    # --- 2) Излишък от панелите при почти пълна батерия ---
+    surplus = soc > SURPLUS_BATTERY_PCT and solar > load + SURPLUS_MARGIN_W
+    state["surplus_streak"] = state.get("surplus_streak", 0) + 1 if surplus else 0
+
+    surplus_cooled = (time.time() - state.get("last_surplus", 0)) > SURPLUS_COOLDOWN_MIN * 60
+    if state["surplus_streak"] >= CONFIRM_CHECKS and surplus_cooled:
+        ntfy(
+            f"Батерия {soc:.0f}%, панели {solar:.0f} W, потребление {load:.0f} W "
+            f"(излишък {solar - load:.0f} W).\n"
+            "Подходящ момент да заредиш колата от ELNexus.",
+            "Излишък от панелите", priority="high", tags="sunny,battery",
+        )
+        state["last_surplus"] = time.time()
+        state["surplus_streak"] = 0
+        notified = True
+
+    # --- 3) Спри зареждането ---
     low = soc < STOP_BATTERY_PCT and load > STOP_CONSUMPTION_W
     state["stop_streak"] = state.get("stop_streak", 0) + 1 if low else 0
 
@@ -165,4 +191,3 @@ def main():
 if __name__ == "__main__":
     main()
     
-  
