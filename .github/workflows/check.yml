@@ -2,7 +2,7 @@ name: solar-check
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # на всеки 5 минути, денонощно
+    - cron: "7,22,37,52 * * * *"   # на всеки ~15 мин., денонощно (не в кръгли минути)
   workflow_dispatch:
     inputs:
       discover:
