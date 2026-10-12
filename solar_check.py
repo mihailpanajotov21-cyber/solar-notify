@@ -16,7 +16,7 @@ import requests
 MAX_CONSUMPTION_W = float(os.environ.get("MAX_CONSUMPTION_W", "500"))
 MIN_BATTERY_PCT = float(os.environ.get("MIN_BATTERY_PCT", "60"))
 MIN_SOLAR_W = float(os.environ.get("MIN_SOLAR_W", "1000"))   # да не вдига тревога нощем
-CONFIRM_CHECKS = int(os.environ.get("CONFIRM_CHECKS", "2"))  # поредни проверки
+CONFIRM_CHECKS = int(os.environ.get("CONFIRM_CHECKS", "1"))  # поредни проверки
 COOLDOWN_MIN = int(os.environ.get("COOLDOWN_MIN", "180"))    # пауза между известията
 
 # Известие "спри зареждането": батерията пада твърде ниско, докато консумацията е висока
@@ -189,5 +189,12 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as e:  # в логовете (публични) показваме само вида грешка
+        print("Грешка:", type(e).__name__)
+        sys.exit(1)
+        
     
